@@ -1,0 +1,36 @@
+# Gmail API credentials and tokens
+token.json
+credentials.json
+
+# Email lists (may contain sensitive data)
+emails.txt
+emails_completed.txt
+emails_invalid.txt
+done_mail.txt
+valid_emails.txt
+invalid_emails.txt
+
+# Logs
+mail_log.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+

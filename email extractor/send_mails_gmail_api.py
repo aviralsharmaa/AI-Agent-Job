@@ -11,7 +11,6 @@ from email import encoders
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
@@ -20,13 +19,13 @@ from googleapiclient.discovery import build
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
 # --------- CONFIGURE THESE ---------
-SUBJECT = "Application for Software Engineer / ML Engineer Role"
+SUBJECT = "Application for Engineer / ML Engineer Role"
 
 BODY = """Hi Team,
 
-I hope you're doing well. I'm reaching out to express my interest in any Engineer / Machine Learning Engineer roles at your organization. I've attached my resume for your reference.
+I hope you’re doing well. I’m reaching out to express my interest in any Engineer / Machine Learning Engineer roles at your organization. I’ve attached my resume for your reference.
 
-I'm currently working as an ML Engineer at ONEARVO, where I build and deploy real-world ML systems — mainly around computer vision, MLOps pipelines, and production-grade deployments on AWS. A lot of my work revolves around turning ML models into reliable products that scale in real environments.
+I’m currently working as an ML Engineer at ONEARVO, where I build and deploy real-world ML systems — mainly around computer vision, MLOps pipelines, and production-grade deployments on AWS. A lot of my work revolves around turning ML models into reliable products that scale in real environments.
 
 A few highlights from my recent work:
 • Built and deployed Vision Transformer (ViT) based QR-code authentication models trained on 200K+ images, achieving 97.9% accuracy.
@@ -34,7 +33,7 @@ A few highlights from my recent work:
 • Created real-time inference endpoints with optimized latency (improved by 65%).
 • Implemented monitoring dashboards using Grafana & CloudWatch to track drift, performance, and reliability.
 
-I genuinely enjoy working on applied machine learning — taking a problem, building a model, wrapping it in clean pipelines, deploying it, and ensuring it runs reliably in real-world scenarios. I'm looking for a place where I can work on impactful engineering problems, learn from the team, and contribute to meaningful products.
+I genuinely enjoy working on applied machine learning — taking a problem, building a model, wrapping it in clean pipelines, deploying it, and ensuring it runs reliably in real-world scenarios. I’m looking for a place where I can work on impactful engineering problems, learn from the team, and contribute to meaningful products.
 
 I would really appreciate it if you could consider my profile for any suitable positions.
 Thanks a lot for your time — looking forward to hearing from you.
@@ -49,12 +48,14 @@ GitHub: https://github.com/aviralsharmaa
 """
 
 RESUME_PATH = "Aviral_Sharma_Resume.pdf"   # Resume file
-RECIPIENTS_FILE = r"E:\Aviral\Personal Project\Job_mailer\email extractor\emails.txt"
-DONE_FILE = "done_mail.txt"                # Emails that have been sent
+RECIPIENTS_FILE = "emails.txt"             # One email per line
+COMPLETED_FILE = "emails_completed.txt"   # Emails that have been sent
+INVALID_FILE = "emails_invalid.txt"        # Invalid/bounced emails
 
 BATCH_SIZE = 20                            # Emails per batch
 SLEEP_BETWEEN_BATCHES = 60                 # Seconds between batches
 RATE_LIMIT_RETRY_DELAY = 300              # 5 minutes wait when rate limited
+MAX_RATE_LIMIT_RETRIES = 3                # Max retries for rate limit errors
 MAX_EMAILS = 200                           # Maximum emails to send per run
 
 LOG_FILE = "mail_log.csv"                  # Excel-friendly log file
@@ -71,17 +72,7 @@ def get_gmail_service():
     # If there are no (valid) credentials, let user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except RefreshError:
-                # Token has been expired or revoked, delete it and re-authenticate
-                print("⚠️  Token expired or revoked. Re-authenticating...")
-                if os.path.exists("token.json"):
-                    os.remove("token.json")
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "credentials.json", SCOPES
-                )
-                creds = flow.run_local_server(port=0)
+            creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 "credentials.json", SCOPES
@@ -96,13 +87,11 @@ def get_gmail_service():
 
 
 def load_recipients(path: str):
-    """Load emails from file."""
     with open(path, "r", encoding="utf-8") as f:
         return [line.strip() for line in f if line.strip()]
 
 
 def init_log_file():
-    """Initialize log file with headers."""
     log_path = Path(LOG_FILE)
     if not log_path.exists():
         with log_path.open("w", newline="", encoding="utf-8") as f:
@@ -111,30 +100,47 @@ def init_log_file():
 
 
 def log_result(email: str, status: str, error_message: str = "", message_id: str = ""):
-    """Log email sending result to CSV file."""
     timestamp = datetime.now().isoformat(timespec="seconds")
     with Path(LOG_FILE).open("a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([timestamp, email, status, error_message, message_id])
 
 
-def move_to_done(email: str):
-    """Move an email to the done file after successful send."""
-    done_path = Path(DONE_FILE)
+def move_to_completed(email: str):
+    """Move an email to the completed file after successful send."""
+    completed_path = Path(COMPLETED_FILE)
     # Read existing emails to avoid duplicates
     existing_emails = set()
-    if done_path.exists():
-        with done_path.open("r", encoding="utf-8") as f:
+    if completed_path.exists():
+        with completed_path.open("r", encoding="utf-8") as f:
             existing_emails = {line.strip() for line in f if line.strip()}
     
     # Only add if not already present
     if email not in existing_emails:
-        with done_path.open("a", encoding="utf-8") as f:
+        with completed_path.open("a", encoding="utf-8") as f:
+            f.write(email + "\n")
+
+
+def move_to_invalid(email: str):
+    """Move an invalid/bounced email to the invalid file."""
+    invalid_path = Path(INVALID_FILE)
+    # Read existing emails to avoid duplicates
+    existing_emails = set()
+    if invalid_path.exists():
+        with invalid_path.open("r", encoding="utf-8") as f:
+            existing_emails = {line.strip() for line in f if line.strip()}
+    
+    # Only add if not already present
+    if email not in existing_emails:
+        with invalid_path.open("a", encoding="utf-8") as f:
             f.write(email + "\n")
 
 
 def is_rate_limit_error(error_message: str) -> bool:
-    """Check if the error is a rate limit error (429)."""
+    """
+    Check if the error is a rate limit error (429).
+    These are temporary errors and should NOT be treated as invalid emails.
+    """
     error_lower = str(error_message).lower()
     rate_limit_patterns = [
         "429",
@@ -145,6 +151,75 @@ def is_rate_limit_error(error_message: str) -> bool:
         "user rate limit exceeded",
     ]
     return any(pattern in error_lower for pattern in rate_limit_patterns)
+
+
+def is_invalid_email_error(error_message: str) -> bool:
+    """
+    Check if the error indicates an invalid/non-existent email address.
+    Common patterns for bounced/invalid emails:
+    - "couldn't be delivered"
+    - "remote server is misconfigured"
+    - "does not exist"
+    - "invalid recipient"
+    - "address not found"
+    - "no such user"
+    - "mailbox unavailable"
+    - "550" (common bounce code)
+    - "553" (common bounce code)
+    - Office 365 specific: "550 5.1.10", "RecipientNotFound"
+    """
+    error_lower = error_message.lower()
+    
+    invalid_patterns = [
+        # General bounce patterns
+        "couldn't be delivered",
+        "could not be delivered",
+        "message not delivered",
+        "remote server is misconfigured",
+        "does not exist",
+        "invalid recipient",
+        "address not found",
+        "no such user",
+        "mailbox unavailable",
+        "user unknown",
+        "recipient address rejected",
+        "permanent failure",
+        "hard bounce",
+        "couldn't be found",
+        "could not be found",
+        "email address you entered couldn't be found",
+        "email address you entered could not be found",
+        "the email address you entered couldn't be found",
+        "the email address you entered could not be found",
+        "check the recipient's email address",
+        "delivery has failed",
+        "delivery failed",
+        
+        # SMTP error codes (550, 553 are common bounce codes)
+        "550",
+        "553",
+        "550-5.1.1",  # Gmail bounce code
+        "550 5.1.1",   # Gmail bounce code
+        
+        # Office 365 specific patterns
+        "550 5.1.10",  # Office 365 RecipientNotFound
+        "550-5.1.10",  # Office 365 RecipientNotFound (with dash)
+        "5.1.10",      # Office 365 error code
+        "recipientnotfound",  # Office 365 error
+        "recipient not found",  # Office 365 error
+        "wasn't found at",  # Office 365: "user wasn't found at domain.com"
+        "not found by smtp",  # Office 365: "not found by SMTP address lookup"
+        "resolver.adr.recipientnotfound",  # Office 365 internal error
+        "resolver.adr.recipient not found",  # Office 365 internal error
+        
+        # Additional patterns
+        "user not found",
+        "mailbox does not exist",
+        "no mailbox here",
+        "invalid mailbox",
+    ]
+    
+    return any(pattern in error_lower for pattern in invalid_patterns)
 
 
 def create_message(sender: str, to: str, subject: str, body_text: str, attachment_path: str):
@@ -193,8 +268,10 @@ def main():
 
     sent_count = 0
     failed_count = 0
+    invalid_count = 0
     batch_count = 0
     sent_emails = set()  # Track successfully sent emails
+    invalid_emails = set()  # Track invalid/bounced emails
 
     for i, email in enumerate(recipients, start=1):
         try:
@@ -206,7 +283,7 @@ def main():
                 attachment_path=RESUME_PATH,
             )
 
-            # Send email
+            # ---- SEND & VERIFY ----
             result = send_message(service, user_id, mime_message)
             message_id = result.get("id", "")
             status = "SENT"
@@ -216,8 +293,8 @@ def main():
             batch_count += 1
             sent_emails.add(email)  # Track successful send
             
-            # Move to done file immediately after successful send
-            move_to_done(email)
+            # Move to completed file immediately after successful send
+            move_to_completed(email)
             
             print(f"[{i}/{len(recipients)}] ✅ Sent to {email} (message id: {message_id})")
             
@@ -238,8 +315,19 @@ def main():
                 print(f"    Waiting {RATE_LIMIT_RETRY_DELAY // 60} minutes before continuing...")
                 time.sleep(RATE_LIMIT_RETRY_DELAY)  # Wait longer for rate limit
                 batch_count = 0  # Reset batch counter after rate limit wait
+                
+            # Check if this is an invalid email error (permanent, don't retry)
+            elif is_invalid_email_error(error_message):
+                status = "INVALID"
+                invalid_count += 1
+                invalid_emails.add(email)  # Track invalid email
+                
+                # Move to invalid file immediately
+                move_to_invalid(email)
+                
+                print(f"[{i}/{len(recipients)}] 🚫 Invalid email: {email} - {error_message[:100]}")
             else:
-                # Other errors (network, etc.)
+                # Other temporary errors (network, etc.)
                 status = "FAILED"
                 failed_count += 1
                 print(f"[{i}/{len(recipients)}] ❌ Failed to send to {email}: {error_message[:100]}")
@@ -253,15 +341,25 @@ def main():
             time.sleep(SLEEP_BETWEEN_BATCHES)
             batch_count = 0
 
-    # Load existing done emails
-    done_emails_set = set()
-    done_path = Path(DONE_FILE)
-    if done_path.exists():
-        with done_path.open("r", encoding="utf-8") as f:
-            done_emails_set = {line.strip() for line in f if line.strip()}
+    # Update emails.txt to remove successfully sent emails and invalid emails
+    # Also check completed and invalid files to ensure we don't keep emails that were already processed
+    completed_emails_set = set()
+    invalid_emails_set = set()
     
-    # Combine all processed emails (sent in this run + already in done file)
-    all_processed_emails = sent_emails | done_emails_set
+    # Load existing completed emails
+    completed_path = Path(COMPLETED_FILE)
+    if completed_path.exists():
+        with completed_path.open("r", encoding="utf-8") as f:
+            completed_emails_set = {line.strip() for line in f if line.strip()}
+    
+    # Load existing invalid emails
+    invalid_path = Path(INVALID_FILE)
+    if invalid_path.exists():
+        with invalid_path.open("r", encoding="utf-8") as f:
+            invalid_emails_set = {line.strip() for line in f if line.strip()}
+    
+    # Combine all processed emails (sent in this run + already in completed/invalid files)
+    all_processed_emails = sent_emails | invalid_emails | completed_emails_set | invalid_emails_set
     
     # Keep only emails that haven't been processed
     remaining_emails = [
@@ -269,26 +367,34 @@ def main():
         if email not in all_processed_emails
     ]
     
-    # Update recipients file with remaining emails
     if remaining_emails:
         print(f"\n📝 Updating {RECIPIENTS_FILE} with remaining {len(remaining_emails)} emails...")
         with Path(RECIPIENTS_FILE).open("w", encoding="utf-8") as f:
             for email in remaining_emails:
                 f.write(email + "\n")
     else:
-        print(f"\n📝 All emails processed!")
+        # All emails processed, clear the file
+        print(f"\n📝 All emails processed! Clearing {RECIPIENTS_FILE}...")
+        Path(RECIPIENTS_FILE).write_text("", encoding="utf-8")
 
     print("\n" + "="*60)
     print("✅ Finished.")
     print("="*60)
     print(f"Total recipients: {len(recipients)}")
     print(f"✅ Successfully sent: {sent_count} (limit: {MAX_EMAILS})")
+    print(f"🚫 Invalid emails (moved to {INVALID_FILE}): {invalid_count}")
     print(f"❌ Failed (temporary errors - will retry): {failed_count}")
     if failed_count > 0:
         print(f"   Note: Rate limit errors (429) are temporary and will be retried on next run")
     print(f"📋 Remaining in {RECIPIENTS_FILE}: {len(remaining_emails)}")
-    print(f"✅ Done emails saved to: {DONE_FILE} (total: {len(done_emails_set)})")
+    print(f"✅ Completed emails saved to: {COMPLETED_FILE} (total: {len(completed_emails_set)})")
+    print(f"🚫 Invalid emails saved to: {INVALID_FILE} (total: {len(invalid_emails_set)})")
     print(f"📊 Log saved to: {LOG_FILE} (open it in Excel).")
+    print("="*60)
+    print(f"\n📌 Summary:")
+    print(f"   • {sent_count} emails successfully sent and moved to {COMPLETED_FILE}")
+    print(f"   • {invalid_count} invalid emails moved to {INVALID_FILE}")
+    print(f"   • {len(remaining_emails)} emails remaining in {RECIPIENTS_FILE} for next run")
     print("="*60)
 
 
