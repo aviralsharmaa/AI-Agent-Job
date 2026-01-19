@@ -3,7 +3,6 @@ credentials.json
 token.json
 
 # Email lists (may contain sensitive data)
-emails_from_excel.txt
 sent_mail.txt
 done_mail.txt
 email extractor/emails_from_excel.txt
