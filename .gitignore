@@ -1,10 +1,30 @@
 # Gmail API credentials and tokens
-
+credentials.json
+token.json
 
 # Email lists (may contain sensitive data)
+emails_from_excel.txt
+sent_mail.txt
+done_mail.txt
+email extractor/emails_from_excel.txt
+email extractor/emails.txt
+email extractor/allmail.txt
+email extractor/not_valid_email.txt
+email extractor/email manager/*.txt
+email extractor/email manager/*.xlsx
 
-# Logs
+# Logs and reports
+mail_log.csv
+sent_mail_report.xlsx
 
+# Resume files
+*.pdf
+
+# Python virtual environment
+Lib/
+Scripts/
+email extractor/Lib/
+email extractor/Scripts/
 
 # Python
 __pycache__/

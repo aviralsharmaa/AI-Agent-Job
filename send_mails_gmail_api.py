@@ -15,49 +15,60 @@ from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+try:
+    import openpyxl
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
+    print("Warning: openpyxl not installed. Excel reports will not be generated.")
+    print("Install it with: pip install openpyxl")
+
 # ---------------------------------------------------
 # Gmail API scope: only send emails
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
-
 # --------- CONFIGURE THESE ---------
-SUBJECT = "Application for Software Engineer / ML Engineer Role"
+SUBJECT = "Application for Software Engineer / Backend / MLOps Role"
 
 BODY = """Hi Team,
 
-I hope you're doing well. I'm reaching out to express my interest in any Engineer / Machine Learning Engineer roles at your organization. I've attached my resume for your reference.
+I hope you are doing well. I am writing to express my interest in Software Engineer / Backend / MLOps roles at your organization. I have attached my resume for your review.
 
-I'm currently working as an ML Engineer at ONEARVO, where I build and deploy real-world ML systems — mainly around computer vision, MLOps pipelines, and production-grade deployments on AWS. A lot of my work revolves around turning ML models into reliable products that scale in real environments.
+I am currently working as a Software Engineer at OneARVO Ventures, where I lead development of production-grade systems involving Python (FastAPI), Flutter, computer vision, MLOps, and cloud-native deployments. My work spans building scalable backend services, mobile applications, and end-to-end CI/CD pipelines, and deploying ML systems on AWS and GCP.
 
-A few highlights from my recent work:
-• Built and deployed Vision Transformer (ViT) based QR-code authentication models trained on 200K+ images, achieving 97.9% accuracy.
-• Designed end-to-end MLOps pipelines using AWS SageMaker, Airflow, MLflow, Docker & Kubernetes.
-• Created real-time inference endpoints with optimized latency (improved by 65%).
-• Implemented monitoring dashboards using Grafana & CloudWatch to track drift, performance, and reliability.
+A few highlights from my experience:
+• Led a small Android/Flutter team and delivered multiple applications from development to stable production.
+• Built FastAPI-based microservices for computer-vision authentication, achieving >95% accuracy and reducing inference latency by ~40%.
+• Designed CI/CD pipelines using GitHub Actions with Docker for automated build and cloud deployment.
+• Deployed ML and backend services on AWS (SageMaker, EC2, S3) and GCP (Cloud Run).
+• Implemented MLOps workflows using MLflow and Airflow for automated training, versioning, and rollout.
 
-I genuinely enjoy working on applied machine learning — taking a problem, building a model, wrapping it in clean pipelines, deploying it, and ensuring it runs reliably in real-world scenarios. I'm looking for a place where I can work on impactful engineering problems, learn from the team, and contribute to meaningful products.
+I enjoy working on real-world engineering problems, taking systems from development to reliable production, and building scalable cloud-native solutions. I would welcome the opportunity to contribute to your team and learn from experienced engineers.
 
-I would really appreciate it if you could consider my profile for any suitable positions.
-Thanks a lot for your time — looking forward to hearing from you.
+Thank you for your time and consideration. I look forward to hearing from you.
 
-Warm regards,
-Aviral Sharma
-+91 9355319465
-aviralsharma5531@gmail.com
+Warm regards,  
+Aviral Sharma  
++91 9355319465  
+aviral.31@outlook.com  
 
-LinkedIn: https://linkedin.com/in/aviralsharma5531
+LinkedIn: https://linkedin.com/in/aviral31  
 GitHub: https://github.com/aviralsharmaa
+Portfolio: https://aviral.info
 """
 
-RESUME_PATH = "Aviral_Sharma_Resume.pdf"   # Resume file
-RECIPIENTS_FILE = r"E:\Aviral\Personal Project\Job_mailer\email extractor\emails.txt"
-DONE_FILE = "done_mail.txt"                # Emails that have been sent
+RESUME_PATH = "Aviral_cv3.pdf"
+RECIPIENTS_FILE = r"V:\Aviral\job-mailer\emails_from_excel.txt"
+SENT_MAIL_FILE = "sent_mail.txt"
 
 BATCH_SIZE = 20                            # Emails per batch
 SLEEP_BETWEEN_BATCHES = 60                 # Seconds between batches
 RATE_LIMIT_RETRY_DELAY = 300              # 5 minutes wait when rate limited
 MAX_EMAILS = 200                           # Maximum emails to send per run
 
-LOG_FILE = "mail_log.csv"                  # Excel-friendly log file
+LOG_FILE = "mail_log.csv"                  # CSV log file
+EXCEL_REPORT_FILE = "sent_mail_report.xlsx" # Excel report file
 # ---------------------------------------------------
 
 
@@ -81,12 +92,12 @@ def get_gmail_service():
                 flow = InstalledAppFlow.from_client_secrets_file(
                     "credentials.json", SCOPES
                 )
-                creds = flow.run_local_server(port=0)
+                creds = flow.run_local_server(port=8080)
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 "credentials.json", SCOPES
             )
-            creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(port=8080)
         # Save the credentials for next runs
         with open("token.json", "w") as token:
             token.write(creds.to_json())
@@ -118,18 +129,18 @@ def log_result(email: str, status: str, error_message: str = "", message_id: str
         writer.writerow([timestamp, email, status, error_message, message_id])
 
 
-def move_to_done(email: str):
-    """Move an email to the done file after successful send."""
-    done_path = Path(DONE_FILE)
+def move_to_sent_mail(email: str):
+    """Move an email to the sent_mail.txt file after successful send."""
+    sent_path = Path(SENT_MAIL_FILE)
     # Read existing emails to avoid duplicates
     existing_emails = set()
-    if done_path.exists():
-        with done_path.open("r", encoding="utf-8") as f:
+    if sent_path.exists():
+        with sent_path.open("r", encoding="utf-8") as f:
             existing_emails = {line.strip() for line in f if line.strip()}
     
     # Only add if not already present
     if email not in existing_emails:
-        with done_path.open("a", encoding="utf-8") as f:
+        with sent_path.open("a", encoding="utf-8") as f:
             f.write(email + "\n")
 
 
@@ -183,6 +194,110 @@ def send_message(service, user_id: str, message_body: dict):
     return message  # contains id, threadId, etc.
 
 
+def create_excel_report(sent_emails_data: list):
+    """Create or append to Excel report with sent email details."""
+    if not EXCEL_AVAILABLE:
+        print("⚠️  openpyxl not available. Skipping Excel report generation.")
+        return
+    
+    print(f"\n📊 Creating/Updating Excel report: {EXCEL_REPORT_FILE}...")
+    
+    # Headers
+    headers = ["Timestamp", "Email Address", "Status", "Gmail Message ID", "Error Message"]
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF")
+    
+    # Try to load existing workbook, or create new one
+    report_path = Path(EXCEL_REPORT_FILE)
+    if report_path.exists():
+        try:
+            wb = openpyxl.load_workbook(EXCEL_REPORT_FILE)
+            ws = wb.active
+            start_row = ws.max_row + 1  # Append after existing data
+        except Exception as e:
+            print(f"  ⚠️  Could not load existing report: {e}. Creating new one.")
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Sent Emails Report"
+            start_row = 2
+            
+            # Write headers
+            for col_idx, header in enumerate(headers, start=1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+    else:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Sent Emails Report"
+        start_row = 2
+        
+        # Write headers
+        for col_idx, header in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+    
+    # Data rows
+    sent_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # Light green
+    failed_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")  # Light red
+    
+    for row_idx, email_data in enumerate(sent_emails_data, start=start_row):
+        timestamp, email, status, message_id, error_message = email_data
+        
+        ws.cell(row=row_idx, column=1, value=timestamp)
+        ws.cell(row=row_idx, column=2, value=email)
+        ws.cell(row=row_idx, column=3, value=status)
+        ws.cell(row=row_idx, column=4, value=message_id)
+        ws.cell(row=row_idx, column=5, value=error_message)
+        
+        # Color code rows based on status
+        row_fill = sent_fill if status == "SENT" else failed_fill
+        for col in range(1, 6):
+            ws.cell(row=row_idx, column=col).fill = row_fill
+    
+    # Auto-adjust column widths
+    ws.column_dimensions['A'].width = 20  # Timestamp
+    ws.column_dimensions['B'].width = 35  # Email
+    ws.column_dimensions['C'].width = 15  # Status
+    ws.column_dimensions['D'].width = 30  # Message ID
+    ws.column_dimensions['E'].width = 50  # Error Message
+    
+    # Freeze header row
+    ws.freeze_panes = "A2"
+    
+    # Save workbook
+    wb.save(EXCEL_REPORT_FILE)
+    print(f"✅ Excel report saved: {EXCEL_REPORT_FILE} ({len(sent_emails_data)} new entries)")
+
+
+def move_sent_emails_to_file(sent_emails: set):
+    """Move sent emails from emails_from_excel.txt to sent_mail.txt"""
+    if not sent_emails:
+        return
+    
+    print(f"\n📝 Moving {len(sent_emails)} sent emails to {SENT_MAIL_FILE}...")
+    
+    # Read existing sent emails
+    existing_sent = set()
+    sent_path = Path(SENT_MAIL_FILE)
+    if sent_path.exists():
+        with sent_path.open("r", encoding="utf-8") as f:
+            existing_sent = {line.strip() for line in f if line.strip()}
+    
+    # Add new sent emails
+    all_sent_emails = existing_sent | sent_emails
+    
+    # Write all sent emails to sent_mail.txt
+    with sent_path.open("w", encoding="utf-8") as f:
+        for email in sorted(all_sent_emails):
+            f.write(email + "\n")
+    
+    print(f"✅ Total emails in {SENT_MAIL_FILE}: {len(all_sent_emails)}")
+
+
 def main():
     init_log_file()
     recipients = load_recipients(RECIPIENTS_FILE)
@@ -195,6 +310,7 @@ def main():
     failed_count = 0
     batch_count = 0
     sent_emails = set()  # Track successfully sent emails
+    sent_emails_data = []  # Track sent email details for Excel report
 
     for i, email in enumerate(recipients, start=1):
         try:
@@ -216,8 +332,12 @@ def main():
             batch_count += 1
             sent_emails.add(email)  # Track successful send
             
-            # Move to done file immediately after successful send
-            move_to_done(email)
+            # Track for Excel report
+            timestamp = datetime.now().isoformat(timespec="seconds")
+            sent_emails_data.append([timestamp, email, status, message_id, error_message])
+            
+            # Move to sent_mail.txt immediately after successful send
+            move_to_sent_mail(email)
             
             print(f"[{i}/{len(recipients)}] ✅ Sent to {email} (message id: {message_id})")
             
@@ -243,6 +363,10 @@ def main():
                 status = "FAILED"
                 failed_count += 1
                 print(f"[{i}/{len(recipients)}] ❌ Failed to send to {email}: {error_message[:100]}")
+            
+            # Track failed emails for report
+            timestamp = datetime.now().isoformat(timespec="seconds")
+            sent_emails_data.append([timestamp, email, status, message_id, error_message[:200]])
 
         # Log every attempt
         log_result(email, status, error_message, message_id)
@@ -253,23 +377,23 @@ def main():
             time.sleep(SLEEP_BETWEEN_BATCHES)
             batch_count = 0
 
-    # Load existing done emails
-    done_emails_set = set()
-    done_path = Path(DONE_FILE)
-    if done_path.exists():
-        with done_path.open("r", encoding="utf-8") as f:
-            done_emails_set = {line.strip() for line in f if line.strip()}
+    # Load existing sent emails from sent_mail.txt
+    existing_sent_emails = set()
+    sent_path = Path(SENT_MAIL_FILE)
+    if sent_path.exists():
+        with sent_path.open("r", encoding="utf-8") as f:
+            existing_sent_emails = {line.strip() for line in f if line.strip()}
     
-    # Combine all processed emails (sent in this run + already in done file)
-    all_processed_emails = sent_emails | done_emails_set
+    # Combine all sent emails (sent in this run + already in sent_mail.txt)
+    all_sent_emails = sent_emails | existing_sent_emails
     
-    # Keep only emails that haven't been processed
+    # Keep only emails that haven't been sent
     remaining_emails = [
         email for email in recipients 
-        if email not in all_processed_emails
+        if email not in all_sent_emails
     ]
     
-    # Update recipients file with remaining emails
+    # Update recipients file (emails_from_excel.txt) with remaining emails
     if remaining_emails:
         print(f"\n📝 Updating {RECIPIENTS_FILE} with remaining {len(remaining_emails)} emails...")
         with Path(RECIPIENTS_FILE).open("w", encoding="utf-8") as f:
@@ -277,6 +401,14 @@ def main():
                 f.write(email + "\n")
     else:
         print(f"\n📝 All emails processed!")
+    
+    # Move sent emails to sent_mail.txt (consolidate all sent emails)
+    if sent_emails:
+        move_sent_emails_to_file(sent_emails)
+    
+    # Create Excel report with all sent email details
+    if sent_emails_data:
+        create_excel_report(sent_emails_data)
 
     print("\n" + "="*60)
     print("✅ Finished.")
@@ -287,8 +419,10 @@ def main():
     if failed_count > 0:
         print(f"   Note: Rate limit errors (429) are temporary and will be retried on next run")
     print(f"📋 Remaining in {RECIPIENTS_FILE}: {len(remaining_emails)}")
-    print(f"✅ Done emails saved to: {DONE_FILE} (total: {len(done_emails_set)})")
-    print(f"📊 Log saved to: {LOG_FILE} (open it in Excel).")
+    print(f"✅ Sent emails saved to: {SENT_MAIL_FILE} (total: {len(all_sent_emails)})")
+    print(f"📊 CSV Log saved to: {LOG_FILE}")
+    if EXCEL_AVAILABLE and sent_emails_data:
+        print(f"📊 Excel Report saved to: {EXCEL_REPORT_FILE}")
     print("="*60)
 
 
