@@ -15,6 +15,14 @@ email extractor/email manager/*.xlsx
 # Logs and reports
 mail_log.csv
 sent_mail_report.xlsx
+sent_mail_report.xlsx.tmp
+
+# Uploads and temporary files
+uploads/
+static/
+templates/
+share/
+etc/
 
 # Resume files
 *.pdf
