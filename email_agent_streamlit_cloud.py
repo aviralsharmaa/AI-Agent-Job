@@ -301,8 +301,8 @@ def main():
                                         st.rerun()
                                     else:
                                         st.error("Authentication function not available")
-                                except Exception as e:
-                                    st.error(f"❌ Authentication failed: {e}")
+                            except Exception as e:
+                                st.error(f"❌ Authentication failed: {e}")
                         else:
                             st.warning("Please enter the authorization code")
                 
