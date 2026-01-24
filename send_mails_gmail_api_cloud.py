@@ -170,14 +170,13 @@ def authenticate_gmail_flow():
                     except:
                         pass
                 
-                # Final fallback: use a placeholder that Google will accept
-                # User will still copy code manually
+                # Final fallback: use Streamlit Cloud URL
                 if not redirect_uri:
-                    redirect_uri = 'http://localhost:8501'
+                    redirect_uri = 'https://ai-agent-job.streamlit.app'
             except:
-                redirect_uri = 'http://localhost:8501'
+                redirect_uri = 'https://ai-agent-job.streamlit.app'
         else:
-            redirect_uri = 'http://localhost:8501'
+            redirect_uri = 'https://ai-agent-job.streamlit.app'
         
         # Use Flow for web applications
         # Note: Even with redirect URI, user will copy code manually
