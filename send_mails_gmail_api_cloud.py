@@ -144,11 +144,47 @@ def authenticate_gmail_flow():
     # Determine if credentials are "web" or "installed" type
     if "web" in credentials_dict:
         client_config = {"web": credentials_dict["web"]}
+        
+        # For web applications, we need a valid URL redirect URI
+        # But we'll still use manual code flow (user copies code from page)
+        # Use the Streamlit Cloud URL from secrets, or construct it
+        redirect_uri = None
+        if STREAMLIT_AVAILABLE:
+            try:
+                # Try to get from secrets first
+                if hasattr(st, 'secrets') and 'gmail' in st.secrets:
+                    redirect_uri = st.secrets['gmail'].get('redirect_uri')
+                
+                # Try environment variable
+                if not redirect_uri:
+                    redirect_uri = os.environ.get('STREAMLIT_APP_URL')
+                
+                # Fallback: try to get from Streamlit's config
+                if not redirect_uri:
+                    try:
+                        # Streamlit Cloud sets this automatically
+                        redirect_uri = os.environ.get('STREAMLIT_SERVER_BASE_URL_PATH', '')
+                        if redirect_uri:
+                            # Construct full URL
+                            redirect_uri = f"https://{os.environ.get('STREAMLIT_SERVER_HOST', '')}{redirect_uri}"
+                    except:
+                        pass
+                
+                # Final fallback: use a placeholder that Google will accept
+                # User will still copy code manually
+                if not redirect_uri:
+                    redirect_uri = 'http://localhost:8501'
+            except:
+                redirect_uri = 'http://localhost:8501'
+        else:
+            redirect_uri = 'http://localhost:8501'
+        
         # Use Flow for web applications
+        # Note: Even with redirect URI, user will copy code manually
         flow = Flow.from_client_config(
             client_config,
             SCOPES,
-            redirect_uri='urn:ietf:wg:oauth:2.0:oob'  # Manual copy-paste flow
+            redirect_uri=redirect_uri
         )
     else:
         # Fallback to installed app flow
