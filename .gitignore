@@ -1,37 +1,16 @@
-# Gmail API credentials and tokens
+# Gmail API credentials (NEVER commit these!)
 credentials.json
 token.json
 
-# Email lists (may contain sensitive data)
-sent_mail.txt
-done_mail.txt
-email extractor/emails_from_excel.txt
-email extractor/emails.txt
-email extractor/allmail.txt
-email extractor/not_valid_email.txt
-email extractor/email manager/*.txt
-email extractor/email manager/*.xlsx
+# Email database (included for deployment)
+# emails_from_excel.txt is included in the repository
 
-# Logs and reports
+# Log files
+sent_mail.txt
+not_sent.txt
 mail_log.csv
 sent_mail_report.xlsx
-sent_mail_report.xlsx.tmp
-
-# Uploads and temporary files
-uploads/
-static/
-templates/
-share/
-etc/
-
-# Resume files
-*.pdf
-
-# Python virtual environment
-Lib/
-Scripts/
-email extractor/Lib/
-email extractor/Scripts/
+*.xlsx
 
 # Python
 __pycache__/
@@ -44,6 +23,12 @@ venv/
 ENV/
 .venv
 
+# Uploads
+uploads/
+*.pdf
+*.doc
+*.docx
+
 # IDE
 .vscode/
 .idea/
@@ -54,3 +39,5 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Streamlit
+.streamlit/secrets.toml
