@@ -12,6 +12,7 @@ from typing import List, Dict, Optional
 import base64
 from datetime import datetime
 import json
+from urllib.parse import parse_qs, urlparse
 from googleapiclient.discovery import build
 
 # Import cloud-compatible Gmail API module
@@ -274,6 +275,36 @@ def main():
         
         # Authentication
         if not st.session_state.authenticated:
+            # Check if we have authorization code in URL (OAuth callback)
+            query_params = st.query_params
+            if 'code' in query_params and 'state' in query_params:
+                # We have the authorization code from OAuth callback
+                auth_code = query_params['code']
+                try:
+                    with st.spinner("Completing authentication..."):
+                        if complete_gmail_auth:
+                            creds = complete_gmail_auth(auth_code)
+                            st.session_state.gmail_service = build("gmail", "v1", credentials=creds)
+                            st.session_state.authenticated = True
+                            # Clear OAuth state
+                            if 'oauth_authorization_url' in st.session_state:
+                                del st.session_state.oauth_authorization_url
+                            if 'oauth_flow' in st.session_state:
+                                del st.session_state.oauth_flow
+                            # Clear URL parameters
+                            st.query_params.clear()
+                            st.success("✅ Authenticated successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Authentication function not available")
+                except Exception as e:
+                    st.error(f"❌ Authentication failed: {e}")
+                    import traceback
+                    with st.expander("Error Details"):
+                        st.code(traceback.format_exc())
+                    # Clear URL parameters on error
+                    st.query_params.clear()
+            
             st.info("🔐 Please authenticate with Gmail to start sending emails.")
             
             # Check if we're in the middle of OAuth flow
