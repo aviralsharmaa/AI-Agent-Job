@@ -256,10 +256,47 @@ def complete_gmail_auth(authorization_code):
     if not STREAMLIT_AVAILABLE:
         raise ValueError("This function requires Streamlit")
     
+    # If flow is not in session state (page reloaded), recreate it
     if 'oauth_flow' not in st.session_state:
-        raise ValueError("OAuth flow not started. Please click 'Authenticate with Gmail' first.")
-    
-    flow = st.session_state.oauth_flow
+        credentials_dict = get_credentials_from_secrets()
+        
+        # Determine if credentials are "web" or "installed" type
+        if "web" in credentials_dict:
+            client_config = {"web": credentials_dict["web"]}
+            
+            # Get redirect URI from secrets or use default
+            redirect_uri = None
+            try:
+                if hasattr(st, 'secrets') and 'gmail' in st.secrets:
+                    redirect_uri = st.secrets['gmail'].get('redirect_uri')
+                if not redirect_uri:
+                    redirect_uri = os.environ.get('STREAMLIT_APP_URL')
+                if not redirect_uri:
+                    redirect_uri = 'https://ai-agent-job.streamlit.app'
+            except:
+                redirect_uri = 'https://ai-agent-job.streamlit.app'
+            
+            flow = Flow.from_client_config(
+                client_config,
+                SCOPES,
+                redirect_uri=redirect_uri
+            )
+        else:
+            # Fallback to installed app flow
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json.dump(credentials_dict, f)
+                temp_credentials_path = f.name
+            
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    temp_credentials_path, SCOPES
+                )
+            finally:
+                if os.path.exists(temp_credentials_path):
+                    os.remove(temp_credentials_path)
+    else:
+        flow = st.session_state.oauth_flow
     
     try:
         flow.fetch_token(code=authorization_code)
