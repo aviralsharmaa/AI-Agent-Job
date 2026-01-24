@@ -12,41 +12,23 @@ from typing import List, Dict, Optional
 import base64
 from datetime import datetime
 import json
+from googleapiclient.discovery import build
 
 # Import cloud-compatible Gmail API module
-try:
-    from send_mails_gmail_api_cloud import (
-        get_gmail_service,
-        authenticate_gmail_flow,
-        authenticate_gmail_with_url,
-        complete_gmail_auth,
-        log_result,
-        init_log_file,
-        move_to_sent_mail,
-        move_to_failed_mail,
-        is_rate_limit_error,
-        is_delivery_failure_error,
-        SENT_MAIL_FILE,
-        FAILED_MAIL_FILE,
-        LOG_FILE,
-    )
-except ImportError:
-    # Fallback to original module for local development
-    from send_mails_gmail_api import (
-        get_gmail_service,
-        log_result,
-        init_log_file,
-        move_to_sent_mail,
-        move_to_failed_mail,
-        is_rate_limit_error,
-        is_delivery_failure_error,
-        SENT_MAIL_FILE,
-        FAILED_MAIL_FILE,
-        LOG_FILE,
-    )
-    authenticate_gmail_flow = None
-    authenticate_gmail_with_url = None
-    complete_gmail_auth = None
+from send_mails_gmail_api_cloud import (
+    get_gmail_service,
+    authenticate_gmail_flow,
+    complete_gmail_auth,
+    log_result,
+    init_log_file,
+    move_to_sent_mail,
+    move_to_failed_mail,
+    is_rate_limit_error,
+    is_delivery_failure_error,
+    SENT_MAIL_FILE,
+    FAILED_MAIL_FILE,
+    LOG_FILE,
+)
 
 # Configuration
 RECIPIENTS_FILE = "emails_from_excel.txt"
@@ -294,29 +276,71 @@ def main():
         if not st.session_state.authenticated:
             st.info("🔐 Please authenticate with Gmail to start sending emails.")
             
-            if st.button("🔑 Authenticate with Gmail", type="primary"):
-                try:
-                    with st.spinner("Authenticating with Gmail..."):
-                        # Try cloud-compatible authentication first
-                        if authenticate_gmail_flow:
+            # Check if we're in the middle of OAuth flow
+            if 'oauth_authorization_url' in st.session_state:
+                st.markdown("### Step 2: Enter Authorization Code")
+                st.info("1. Click the link below to authorize")
+                st.markdown(f"[🔗 Authorize with Google]({st.session_state.oauth_authorization_url})")
+                st.info("2. After authorizing, copy the authorization code from the page")
+                
+                auth_code = st.text_input("Enter authorization code:", type="default", help="Paste the code you received after authorizing")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ Complete Authentication", type="primary"):
+                        if auth_code:
+                            try:
+                                with st.spinner("Completing authentication..."):
+                                    if complete_gmail_auth:
+                                        creds = complete_gmail_auth(auth_code)
+                                        st.session_state.gmail_service = build("gmail", "v1", credentials=creds)
+                                        st.session_state.authenticated = True
+                                        if 'oauth_authorization_url' in st.session_state:
+                                            del st.session_state.oauth_authorization_url
+                                        st.success("✅ Authenticated successfully!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Authentication function not available")
+                                except Exception as e:
+                                    st.error(f"❌ Authentication failed: {e}")
+                        else:
+                            st.warning("Please enter the authorization code")
+                
+                with col2:
+                    if st.button("🔄 Cancel"):
+                        if 'oauth_authorization_url' in st.session_state:
+                            del st.session_state.oauth_authorization_url
+                        if 'oauth_flow' in st.session_state:
+                            del st.session_state.oauth_flow
+                        st.rerun()
+            else:
+                # Initial authentication button
+                if st.button("🔑 Authenticate with Gmail", type="primary"):
+                    try:
+                        with st.spinner("Starting authentication..."):
+                            # Try to get existing service first
                             try:
                                 st.session_state.gmail_service = get_gmail_service()
                                 st.session_state.authenticated = True
                                 st.success("✅ Authenticated successfully!")
                                 st.rerun()
-                            except ValueError:
+                            except ValueError as e:
                                 # Need to start OAuth flow
-                                st.session_state.auth_in_progress = True
-                                st.rerun()
-                        else:
-                            # Fallback to original method
-                            st.session_state.gmail_service = get_gmail_service()
-                            st.session_state.authenticated = True
-                            st.success("✅ Authenticated successfully!")
-                            st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Authentication failed: {e}")
-                    st.info("💡 Make sure Gmail credentials are configured in Streamlit secrets or environment variables.")
+                                if authenticate_gmail_flow:
+                                    auth_url = authenticate_gmail_flow()
+                                    if auth_url:
+                                        st.session_state.oauth_authorization_url = auth_url
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to generate authorization URL")
+                                else:
+                                    st.error("Authentication function not available")
+                    except Exception as e:
+                        st.error(f"❌ Authentication failed: {e}")
+                        st.info("💡 Make sure Gmail credentials are configured in Streamlit secrets or environment variables.")
+                        import traceback
+                        with st.expander("Error Details"):
+                            st.code(traceback.format_exc())
         else:
             st.success("✅ Authenticated with Gmail")
             if st.button("🔓 Disconnect"):

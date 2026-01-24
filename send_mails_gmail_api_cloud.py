@@ -19,7 +19,7 @@ from email import encoders
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google.auth.exceptions import RefreshError
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import InstalledAppFlow, Flow, Flow
 from googleapiclient.discovery import build
 
 try:
@@ -141,33 +141,48 @@ def authenticate_gmail_flow():
     """
     credentials_dict = get_credentials_from_secrets()
     
-    # Create temporary credentials file
-    import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(credentials_dict, f)
-        temp_credentials_path = f.name
-    
-    try:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            temp_credentials_path, SCOPES
+    # Determine if credentials are "web" or "installed" type
+    if "web" in credentials_dict:
+        client_config = {"web": credentials_dict["web"]}
+        # Use Flow for web applications
+        flow = Flow.from_client_config(
+            client_config,
+            SCOPES,
+            redirect_uri='urn:ietf:wg:oauth:2.0:oob'  # Manual copy-paste flow
         )
+    else:
+        # Fallback to installed app flow
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(credentials_dict, f)
+            temp_credentials_path = f.name
         
-        # For cloud, we need to use authorization URL instead of local server
-        # This will be handled in Streamlit with st.link_button or redirect
-        creds = flow.run_local_server(port=0, open_browser=False)
-        
-        # Save token
-        if STREAMLIT_AVAILABLE:
-            st.session_state.gmail_token = json.loads(creds.to_json())
-        else:
-            with open("token.json", "w") as token:
-                token.write(creds.to_json())
-        
-        return creds
-    finally:
-        # Clean up temporary file
-        if os.path.exists(temp_credentials_path):
-            os.remove(temp_credentials_path)
+        try:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                temp_credentials_path, SCOPES
+            )
+        finally:
+            if os.path.exists(temp_credentials_path):
+                os.remove(temp_credentials_path)
+    
+    # Generate authorization URL
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true',
+        prompt='consent'
+    )
+    
+    # Store state in session for verification
+    if STREAMLIT_AVAILABLE:
+        st.session_state.oauth_state = state
+        st.session_state.oauth_flow = flow
+        return authorization_url
+    else:
+        # For non-Streamlit environments, print URL
+        print(f"Please visit this URL to authorize the application: {authorization_url}")
+        authorization_code = input("Enter the authorization code: ")
+        flow.fetch_token(code=authorization_code)
+        return flow.credentials
 
 
 def authenticate_gmail_with_url():
@@ -200,28 +215,37 @@ def authenticate_gmail_with_url():
         raise e
 
 
-def complete_gmail_auth(authorization_code, temp_credentials_path):
+def complete_gmail_auth(authorization_code):
     """Complete OAuth flow with authorization code."""
+    if not STREAMLIT_AVAILABLE:
+        raise ValueError("This function requires Streamlit")
+    
+    if 'oauth_flow' not in st.session_state:
+        raise ValueError("OAuth flow not started. Please click 'Authenticate with Gmail' first.")
+    
+    flow = st.session_state.oauth_flow
+    
     try:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            temp_credentials_path, SCOPES
-        )
-        flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'
-        
         flow.fetch_token(code=authorization_code)
         creds = flow.credentials
         
         # Save token
-        if STREAMLIT_AVAILABLE:
-            st.session_state.gmail_token = json.loads(creds.to_json())
-        else:
-            with open("token.json", "w") as token:
-                token.write(creds.to_json())
+        st.session_state.gmail_token = json.loads(creds.to_json())
+        
+        # Clean up
+        if 'oauth_state' in st.session_state:
+            del st.session_state.oauth_state
+        if 'oauth_flow' in st.session_state:
+            del st.session_state.oauth_flow
         
         return creds
-    finally:
-        if os.path.exists(temp_credentials_path):
-            os.remove(temp_credentials_path)
+    except Exception as e:
+        # Clean up on error
+        if 'oauth_state' in st.session_state:
+            del st.session_state.oauth_state
+        if 'oauth_flow' in st.session_state:
+            del st.session_state.oauth_flow
+        raise e
 
 
 def init_log_file():
