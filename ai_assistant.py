@@ -22,12 +22,13 @@ except ImportError:
 # Default Groq model — fast and capable. Override with [groq] model in secrets.
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
-# Max chars of resume text to feed the model, and max output tokens to generate.
-# llama-3.3-70b-versatile: 128k context window, 32768 max completion tokens
-# (32768 is the model's hard ceiling — higher values are rejected by the API).
-# 320k chars (~80k input tokens) + 32768 output tokens = ~112k, under the 128k cap.
-RESUME_MAX_CHARS = 320000
-MAX_OUTPUT_TOKENS = 32768
+# Groq FREE tier hard-limits each request to 12,000 tokens/minute (TPM), so a
+# single request's (input + max_tokens) must stay well under 12k or the API
+# returns 413 rate_limit_exceeded. These values keep us safely inside that:
+#   input ~6k tokens (24k chars) + 2k output + overhead ≈ 8k < 12k.
+# (Upgrade to Groq Dev tier for much higher limits, then these can be raised.)
+RESUME_MAX_CHARS = 24000
+MAX_OUTPUT_TOKENS = 2000
 
 
 def get_groq_key():
