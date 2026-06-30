@@ -22,10 +22,12 @@ except ImportError:
 # Default Groq model — fast and capable. Override with [groq] model in secrets.
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
-# Max chars of resume text to feed the model (reads the whole PDF), and the
-# max output tokens to let Groq generate (llama-3.3-70b allows up to 32768).
-RESUME_MAX_CHARS = 100000
-MAX_OUTPUT_TOKENS = 32000
+# Max chars of resume text to feed the model, and max output tokens to generate.
+# llama-3.3-70b-versatile: 128k context window, 32768 max completion tokens
+# (32768 is the model's hard ceiling — higher values are rejected by the API).
+# 300k chars (~75k tokens) leaves ample room for the 32768-token response.
+RESUME_MAX_CHARS = 300000
+MAX_OUTPUT_TOKENS = 32768
 
 
 def get_groq_key():
