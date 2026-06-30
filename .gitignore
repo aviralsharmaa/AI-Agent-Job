@@ -10,6 +10,7 @@ client_secret_*.json
 sent_mail.txt
 not_sent.txt
 mail_log.csv
+user_progress.json
 sent_mail_report.xlsx
 *.xlsx
 done_mail.txt
