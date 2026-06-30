@@ -9,6 +9,10 @@ import time
 import csv
 import shutil
 import json
+
+# Google may return granted scopes in a different order / add 'openid',
+# which otherwise makes oauthlib raise a "Scope has changed" error.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 from datetime import datetime
 from pathlib import Path
 from email.mime.text import MIMEText
@@ -36,8 +40,12 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-# Gmail API scope: only send emails
-SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+# Scopes: send email + read the signed-in user's email address (for display)
+SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 
 # File paths
 SENT_MAIL_FILE = "sent_mail.txt"

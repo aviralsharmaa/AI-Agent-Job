@@ -239,11 +239,12 @@ def send_emails(service, emails: List[str], subject: str, body: str,
     return sent_list, failed_list
 
 
-def get_user_email(service) -> str:
-    """Get the authenticated user's Gmail address."""
+def get_user_email(creds) -> str:
+    """Get the signed-in user's email address from the OAuth userinfo endpoint."""
     try:
-        profile = service.users().getProfile(userId="me").execute()
-        return profile.get("emailAddress", "unknown")
+        oauth2 = build("oauth2", "v2", credentials=creds)
+        info = oauth2.userinfo().get().execute()
+        return info.get("email") or "unknown"
     except Exception:
         return "unknown"
 
@@ -262,7 +263,7 @@ def render_auth_sidebar():
                     creds = complete_gmail_auth(auth_code)
                     service = build("gmail", "v1", credentials=creds)
                     st.session_state.gmail_service = service
-                    st.session_state.user_email = get_user_email(service)
+                    st.session_state.user_email = get_user_email(creds)
                     st.session_state.authenticated = True
                     for key in ('oauth_authorization_url', 'oauth_flow'):
                         st.session_state.pop(key, None)
@@ -377,7 +378,7 @@ def main():
     if user_email:
         st.info(f"▶️ Next send will go to the next **{next_batch_size}** unsent recipient(s).")
 
-    send_clicked = st.button("🚀 Send Next Batch", type="primary", use_container_width=True)
+    send_clicked = st.button("📤 Send", type="primary", use_container_width=True)
 
     if send_clicked:
         # Validations
@@ -419,9 +420,11 @@ def main():
                     f.write(uploaded_file.getbuffer())
                 attachment_paths.append(str(file_path))
 
-        # Send
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        # Send — progress shown in the sidebar
+        st.sidebar.divider()
+        st.sidebar.markdown(f"### 📤 Sending {len(batch)} emails")
+        progress_bar = st.sidebar.progress(0)
+        status_text = st.sidebar.empty()
         with st.spinner(f"📧 Sending {len(batch)} emails..."):
             sent_list, failed_list = send_emails(
                 st.session_state.gmail_service, batch, subject.strip(),
