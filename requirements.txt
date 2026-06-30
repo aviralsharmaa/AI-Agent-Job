@@ -8,3 +8,7 @@ google-api-python-client>=2.0.0
 
 # Streamlit (required for email_agent_streamlit.py)
 streamlit>=1.28.0
+
+# AI features (Groq LLM + PDF resume parsing)
+groq>=0.11.0
+pypdf>=4.0.0

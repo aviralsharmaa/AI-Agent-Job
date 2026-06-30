@@ -21,6 +21,15 @@ import base64
 from datetime import datetime, timedelta
 from googleapiclient.discovery import build
 
+# AI assistant (Groq)
+from ai_assistant import (
+    ai_available,
+    extract_pdf_text,
+    analyze_resume,
+    body_from_description,
+    improve_text,
+)
+
 # Import cloud-compatible Gmail API module
 from send_mails_gmail_api_cloud import (
     get_gmail_service,
@@ -239,6 +248,36 @@ def send_emails(service, emails: List[str], subject: str, body: str,
     return sent_list, failed_list
 
 
+# --------------------------------------------------------------------------- #
+# AI button callbacks (run before widgets are re-instantiated, so they can
+# safely set the subject/body widget state)
+# --------------------------------------------------------------------------- #
+def _cb_generate_body():
+    desc = st.session_state.get("desc_input", "").strip()
+    if not desc:
+        st.session_state._ai_msg = ("warning", "✍️ Describe your message first.")
+        return
+    try:
+        st.session_state.body_input = body_from_description(
+            desc, st.session_state.get("resume_text", "")
+        )
+        st.session_state._ai_msg = ("success", "✨ Body generated from your description.")
+    except Exception as e:
+        st.session_state._ai_msg = ("error", f"AI error: {e}")
+
+
+def _cb_improve_body():
+    text = st.session_state.get("body_input", "").strip()
+    if not text:
+        st.session_state._ai_msg = ("warning", "✍️ Write or generate some body text first.")
+        return
+    try:
+        st.session_state.body_input = improve_text(text)
+        st.session_state._ai_msg = ("success", "🪄 Body improved.")
+    except Exception as e:
+        st.session_state._ai_msg = ("error", f"AI error: {e}")
+
+
 def get_user_email(creds) -> str:
     """Get the signed-in user's email address from the OAuth userinfo endpoint."""
     try:
@@ -365,14 +404,94 @@ def main():
     st.divider()
 
     # --- Compose -------------------------------------------------------------
+    st.session_state.setdefault("subject_input", "")
+    st.session_state.setdefault("body_input", "")
+    st.session_state.setdefault("attachment_paths", [])
+    st.session_state.setdefault("resume_text", "")
+
     st.subheader("✍️ Compose Email")
-    subject = st.text_input("📌 Subject", placeholder="Application for Software Engineer role")
-    body = st.text_area("💬 Body", height=220, placeholder="Write your email here...")
+    ai_on = ai_available()
+
+    # 1. Resume / CV upload — drives auto subject + body
     uploaded_files = st.file_uploader(
-        "📎 Attach Resume / CV (PDF, DOC, DOCX)",
+        "📎 Attach Resume / CV (PDF recommended for AI analysis)",
         type=['pdf', 'doc', 'docx', 'txt'],
         accept_multiple_files=True,
+        key="resume_files",
     )
+    if uploaded_files:
+        sig = tuple((f.name, f.size) for f in uploaded_files)
+        if st.session_state.get("last_resume_sig") != sig:
+            st.session_state.last_resume_sig = sig
+            upload_dir = Path("uploads")
+            upload_dir.mkdir(exist_ok=True)
+            paths = []
+            for uf in uploaded_files:
+                p = upload_dir / uf.name
+                with open(p, "wb") as f:
+                    f.write(uf.getbuffer())
+                paths.append(str(p))
+            st.session_state.attachment_paths = paths
+
+            # Extract text from the first PDF/TXT for AI analysis
+            resume_text = ""
+            for p in paths:
+                resume_text = extract_pdf_text(p)
+                if resume_text:
+                    break
+            st.session_state.resume_text = resume_text
+
+            # Auto-draft subject + body from the resume
+            if resume_text and ai_on:
+                try:
+                    with st.spinner("🤖 Analyzing resume & drafting your email..."):
+                        result = analyze_resume(resume_text)
+                    st.session_state._pending_subject = result.get("subject", "")
+                    st.session_state._pending_body = result.get("body", "")
+                    st.session_state._ai_msg = (
+                        "success",
+                        "🤖 Subject & body auto-drafted from your resume — edit as you like.",
+                    )
+                except Exception as e:
+                    st.session_state._ai_msg = ("error", f"Resume analysis failed: {e}")
+            st.rerun()
+
+    if not ai_on:
+        st.caption("🔌 Add your Groq API key in app secrets ([groq] api_key) to enable AI writing.")
+
+    # 2. "Describe your message" → AI writes the body
+    dcol1, dcol2 = st.columns([4, 1])
+    with dcol1:
+        st.text_input(
+            "Describe your message",
+            key="desc_input",
+            placeholder="✨ Describe your message (e.g. short intro applying for a backend role)",
+            label_visibility="collapsed",
+        )
+    with dcol2:
+        st.button("✨ Generate", on_click=_cb_generate_body,
+                  disabled=not ai_on, use_container_width=True)
+
+    # Apply any AI-generated content BEFORE the subject/body widgets are created
+    for src, dst in (("_pending_subject", "subject_input"), ("_pending_body", "body_input")):
+        if src in st.session_state:
+            st.session_state[dst] = st.session_state.pop(src)
+
+    # 3. Subject & Body
+    st.text_input("📌 Subject", key="subject_input",
+                  placeholder="Application for Software Engineer role")
+    st.text_area("💬 Body", key="body_input", height=220,
+                 placeholder="Write your email here, or use AI above...")
+    st.button("🪄 Improve / Paraphrase body", on_click=_cb_improve_body, disabled=not ai_on)
+
+    # Show any AI status message
+    if "_ai_msg" in st.session_state:
+        level, text = st.session_state.pop("_ai_msg")
+        getattr(st, level)(text)
+
+    subject = st.session_state.get("subject_input", "")
+    body = st.session_state.get("body_input", "")
+    attachment_paths = st.session_state.get("attachment_paths", [])
 
     next_batch_size = min(remaining_quota, remaining_count) if user_email else 0
     if user_email:
@@ -408,17 +527,6 @@ def main():
         if not batch:
             st.success("🎉 No new recipients left to send to.")
             return
-
-        # Save attachments
-        attachment_paths = []
-        if uploaded_files:
-            upload_dir = Path("uploads")
-            upload_dir.mkdir(exist_ok=True)
-            for uploaded_file in uploaded_files:
-                file_path = upload_dir / uploaded_file.name
-                with open(file_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                attachment_paths.append(str(file_path))
 
         # Send — progress shown in the sidebar
         st.sidebar.divider()
