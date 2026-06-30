@@ -22,6 +22,11 @@ except ImportError:
 # Default Groq model — fast and capable. Override with [groq] model in secrets.
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
+# Max chars of resume text to feed the model (reads the whole PDF), and the
+# max output tokens to let Groq generate (llama-3.3-70b allows up to 32768).
+RESUME_MAX_CHARS = 100000
+MAX_OUTPUT_TOKENS = 32000
+
 
 def get_groq_key():
     """Return the Groq API key from Streamlit secrets or environment."""
@@ -64,7 +69,7 @@ def _client():
     return Groq(api_key=get_groq_key())
 
 
-def _chat(system: str, user: str, temperature: float = 0.6, max_tokens: int = 900) -> str:
+def _chat(system: str, user: str, temperature: float = 0.6, max_tokens: int = MAX_OUTPUT_TOKENS) -> str:
     """Single-turn chat completion, returns the text content."""
     client = _client()
     resp = client.chat.completions.create(
@@ -82,7 +87,7 @@ def _chat(system: str, user: str, temperature: float = 0.6, max_tokens: int = 90
 # --------------------------------------------------------------------------- #
 # PDF / resume text extraction
 # --------------------------------------------------------------------------- #
-def extract_pdf_text(file_path: str, max_chars: int = 14000) -> str:
+def extract_pdf_text(file_path: str, max_chars: int = RESUME_MAX_CHARS) -> str:
     """Extract text from a PDF (or .txt) file, truncated to max_chars."""
     path_lower = file_path.lower()
     text = ""
@@ -127,7 +132,7 @@ def analyze_resume(resume_text: str) -> dict:
         "FORMATTING RULES (very important):\n"
         "- Use real line breaks. Separate the greeting, EACH paragraph, and the "
         "closing with a blank line (\\n\\n).\n"
-        "- First line is the greeting: 'Dear Sir/Madam,'\n"
+        "- First line is the greeting, exactly: 'Hey,'\n"
         "- Exactly 3 short paragraphs, 2-4 sentences each.\n"
         "- End with a sign-off block, each item on its own line:\n"
         "  'Best regards,' then the full name, then phone / email / LinkedIn if "
@@ -140,7 +145,7 @@ def analyze_resume(resume_text: str) -> dict:
         "\"body\": the full email text, WITH the line breaks described above.\n\n"
         f"RESUME:\n{resume_text}"
     )
-    raw = _chat(system, user, temperature=0.5, max_tokens=1200)
+    raw = _chat(system, user, temperature=0.5)
     return _parse_subject_body(raw)
 
 
@@ -154,7 +159,7 @@ def body_from_description(description: str, resume_text: str = "") -> str:
     user = (
         "Write a professional email body based on this description.\n"
         "Formatting rules:\n"
-        "- Start with a greeting on its own line (e.g. 'Dear Sir/Madam,').\n"
+        "- Start with a greeting on its own line, exactly: 'Hey,'\n"
         "- Separate the greeting, each paragraph, and the sign-off with a blank "
         "line (real line breaks).\n"
         "- Keep it concise (2-3 short paragraphs) and end with 'Best regards,' and "
