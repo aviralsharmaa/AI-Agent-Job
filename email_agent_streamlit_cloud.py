@@ -253,12 +253,12 @@ def get_user_email(service) -> str:
 # --------------------------------------------------------------------------- #
 def render_auth_sidebar():
     if not st.session_state.authenticated:
-        # OAuth callback (code in URL)
+        # OAuth callback (Google redirected back with ?code=...)
         query_params = st.query_params
         if 'code' in query_params and 'state' in query_params:
             auth_code = query_params['code']
             try:
-                with st.spinner("Completing authentication..."):
+                with st.spinner("Signing you in..."):
                     creds = complete_gmail_auth(auth_code)
                     service = build("gmail", "v1", credentials=creds)
                     st.session_state.gmail_service = service
@@ -267,48 +267,19 @@ def render_auth_sidebar():
                     for key in ('oauth_authorization_url', 'oauth_flow'):
                         st.session_state.pop(key, None)
                     st.query_params.clear()
-                    st.success("✅ Authenticated successfully!")
                     st.rerun()
             except Exception as e:
-                st.error(f"❌ Authentication failed: {e}")
-                import traceback
-                with st.expander("Error Details"):
-                    st.code(traceback.format_exc())
+                st.error(f"❌ Sign-in failed: {e}")
                 st.query_params.clear()
 
-        st.info("🔐 Please authenticate with Gmail to start sending emails.")
-
-        if 'oauth_authorization_url' in st.session_state:
-            st.markdown("### Step 2: Authorize")
-            st.markdown(f"[🔗 Authorize with Google]({st.session_state.oauth_authorization_url})")
-            st.caption("After authorizing you'll be redirected back here automatically.")
-            if st.button("🔄 Cancel"):
-                for key in ('oauth_authorization_url', 'oauth_flow'):
-                    st.session_state.pop(key, None)
-                st.rerun()
-        else:
-            if st.button("🔑 Authenticate with Gmail", type="primary"):
-                try:
-                    with st.spinner("Starting authentication..."):
-                        try:
-                            service = get_gmail_service()
-                            st.session_state.gmail_service = service
-                            st.session_state.user_email = get_user_email(service)
-                            st.session_state.authenticated = True
-                            st.rerun()
-                        except ValueError:
-                            auth_url = authenticate_gmail_flow()
-                            if auth_url:
-                                st.session_state.oauth_authorization_url = auth_url
-                                st.rerun()
-                            else:
-                                st.error("Failed to generate authorization URL")
-                except Exception as e:
-                    st.error(f"❌ Authentication failed: {e}")
-                    st.info("💡 Make sure Gmail credentials are configured in Streamlit secrets.")
-                    import traceback
-                    with st.expander("Error Details"):
-                        st.code(traceback.format_exc())
+        # Single button → straight to Google sign-in
+        try:
+            auth_url = authenticate_gmail_flow()
+            st.link_button("🔐 Sign in with Google", auth_url,
+                           type="primary", use_container_width=True)
+        except Exception as e:
+            st.error(f"❌ Could not start sign-in: {e}")
+            st.info("💡 Make sure Gmail credentials are configured in Streamlit secrets.")
     else:
         st.success(f"✅ Signed in as **{st.session_state.get('user_email', 'Gmail')}**")
         if st.button("🔓 Disconnect"):
