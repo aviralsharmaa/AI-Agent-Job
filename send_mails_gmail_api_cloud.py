@@ -180,10 +180,15 @@ def authenticate_gmail_flow():
         
         # Use Flow for web applications
         # Note: Even with redirect URI, user will copy code manually
+        # autogenerate_code_verifier=False disables PKCE. PKCE's code_verifier
+        # is lost when Google redirects back (Streamlit starts a fresh session),
+        # which would cause "Missing code verifier" on token exchange. A web
+        # client authenticates with its client_secret, so PKCE is not required.
         flow = Flow.from_client_config(
             client_config,
             SCOPES,
-            redirect_uri=redirect_uri
+            redirect_uri=redirect_uri,
+            autogenerate_code_verifier=False
         )
     else:
         # Fallback to installed app flow
@@ -278,7 +283,8 @@ def complete_gmail_auth(authorization_code):
             flow = Flow.from_client_config(
                 client_config,
                 SCOPES,
-                redirect_uri=redirect_uri
+                redirect_uri=redirect_uri,
+                autogenerate_code_verifier=False
             )
         else:
             # Fallback to installed app flow
@@ -286,7 +292,7 @@ def complete_gmail_auth(authorization_code):
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
                 json.dump(credentials_dict, f)
                 temp_credentials_path = f.name
-            
+
             try:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     temp_credentials_path, SCOPES
