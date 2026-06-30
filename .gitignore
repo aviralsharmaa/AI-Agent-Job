@@ -1,6 +1,7 @@
 # Gmail API credentials (NEVER commit these!)
 credentials.json
 token.json
+client_secret_*.json
 
 # Email database (included for deployment)
 # emails_from_excel.txt is included in the repository
