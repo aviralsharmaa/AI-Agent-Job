@@ -338,16 +338,24 @@ def main():
 
         st.divider()
         st.subheader("📊 Email Database")
-        uploaded_email_file = st.file_uploader(
-            "Upload email list (.txt, one email per line)",
-            type=['txt'],
-            help="Optional — a default list is already included."
+        use_custom_list = st.toggle(
+            "Upload my own email list",
+            value=False,
+            help="Off: use the built-in email list. On: upload your own .txt file."
         )
-        if uploaded_email_file:
-            with open(RECIPIENTS_FILE, "wb") as f:
-                f.write(uploaded_email_file.getbuffer())
-            st.cache_data.clear()
-            st.success("✅ Email database updated!")
+        if use_custom_list:
+            uploaded_email_file = st.file_uploader(
+                "Upload email list (.txt, one email per line)",
+                type=['txt'],
+                help="One email per line."
+            )
+            if uploaded_email_file:
+                with open(RECIPIENTS_FILE, "wb") as f:
+                    f.write(uploaded_email_file.getbuffer())
+                st.cache_data.clear()
+                st.success("✅ Email database updated!")
+        else:
+            st.caption("📁 Using the built-in email list.")
 
     all_emails = load_emails()
 
